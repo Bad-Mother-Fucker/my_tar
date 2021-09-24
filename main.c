@@ -4,6 +4,7 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <dirent.h>
 
 #ifndef BUF_SIZE
 #define BUF_SIZE 1024
@@ -15,13 +16,13 @@ typedef struct names_s {
 }names;
 
 typedef struct metadata_s {
-    size_t  size;
+    off_t  size;
     mode_t  mode;
     unsigned uid;
     unsigned gid;
     struct timespec modification_time;
     unsigned nameLen;
-    char* name;
+    char name[20];
 }metadata;
 
 int analizeArg(int, char* []);
@@ -33,6 +34,12 @@ int closeArchive(int);
 metadata getInfo(char*);
 int writeData(metadata, int);
 void copyFileContent(char* , int );
+void readArchiveMetadata(int ad);
+metadata getArchivedFileMetadata(char* filename, int ad);
+void archiveIfNewer(char* filename, int ad);
+void extract(int, const char[]);
+int lastIndexOf(char c, char* s);
+
 
 
 int main(int argc, char* argv []) {
@@ -46,9 +53,10 @@ int analizeArg( int argc, char* argv []) {
 
     if (argc < 3) {
         argc = 4;
-        argv[1] = "-c";
-        argv[2] = "../hi.txt";
-        argv[3] = "../chichi.txt";
+        argv[1] = "-x";
+        argv[2] = "../Archive.tar";
+        argv[3] = "..";
+
     };
 
     if (argContains("-c", argc, argv) != -1) {
@@ -56,17 +64,132 @@ int analizeArg( int argc, char* argv []) {
         char* archiveName = index == -1 ? "../Archive.tar": argv[index+1];
         int archiveDesc = createArchive(archiveName);
 
-
         names filenames = getFilenames(argc,argv);
         archive(filenames, archiveDesc);
         closeArchive(archiveDesc);
-    }
+    } else
+        if (argContains("-r", argc, argv) != -1) {
+        int index = argContains("-f", argc, argv);
+        if(index == -1) {
+            perror("-f option is required with an archive name");
+            exit(1);
+        }
+        char* archiveName = argv[index+1];
+        int ad = open(archiveName, O_WRONLY|O_APPEND);
+
+        if (ad == -1) {
+            perror("Error opening archive: ");
+            exit(1);
+        }
+
+        names filenames = getFilenames(argc, argv);
+        archive(filenames,ad);
+        closeArchive(ad);
+    } else
+        if (argContains("-t",argc ,argv)!=-1) {
+
+            char* archiveName = argv[2];
+            int ad = open(archiveName, O_RDONLY);
+
+            if (ad == -1) {
+                perror("Error opening archive: ");
+                exit(1);
+            }
+            readArchiveMetadata(ad);
+        } else
+        if (argContains("-u", argc,argv)!=-1){
+
+            int index = argContains("-f", argc, argv);
+            if(index == -1) {
+                perror("-f option is required with an archive name");
+                exit(1);
+            }
+            char* archiveName = argv[index+1];
+            int ad = open(archiveName, O_WRONLY|O_APPEND);
+            names filenames = getFilenames(argc,argv);
+            for (int i = 0; i< filenames.count; i++){
+                archiveIfNewer(filenames.array[i],ad);
+            }
+
+        }else
+            if(argContains("-x", argc,argv) ){
+
+                char* archiveName = argv[2];
+                int ad = open(archiveName, O_RDONLY);
+
+                if (ad == -1) {
+                    perror("Error opening archive: ");
+                    exit(1);
+                }
+                extract(ad, argv[3]);
+            }
+
+
     return 0;
 }
 
 int closeArchive(int ad){
     close(ad);
     return 0;
+}
+
+
+void extract(int ad, const char *dirname) {
+
+    metadata md;
+
+
+    while (read(ad, &md, sizeof (md)) > 0){
+
+        const char * filename = &md.name[lastIndexOf('/',md.name)+1];
+        char* name = ("%s/%s", dirname, filename);
+
+        int fd = open(name, O_RDONLY);
+        if (fd != -1) {
+            metadata stat = getInfo(md.name);
+            if (stat.modification_time.tv_nsec < md.modification_time.tv_nsec){
+                unlink(stat.name);
+                fd = open(("%s/%s", dirname, filename), O_RDONLY|O_CREAT);
+            }
+
+        }else {
+            fd = open(("%s/%s", dirname, filename), O_RDONLY|O_CREAT);
+        }
+
+        char buf[md.size];
+        read(ad, buf, md.size);
+        write(fd, buf, sizeof (buf));
+        close(fd);
+    }
+
+
+}
+
+metadata getArchivedFileMetadata(char* filename, int ad){
+    metadata md;
+    while (read(ad, &md, sizeof (md)) > 0){
+        if (strcmp(filename, md.name) == 0)
+            return md;
+        lseek(ad, md.size, SEEK_CUR);
+    }
+    strcpy(md.name,"");
+    return md;
+}
+
+void archiveIfNewer(char* filename, int ad) {
+    metadata new_md = getInfo(filename);
+    metadata a_md = getArchivedFileMetadata(filename, ad);
+    if(strcmp(a_md.name, "")==0 || new_md.modification_time.tv_nsec > a_md.modification_time.tv_nsec )
+        writeData(new_md, ad);
+
+}
+
+void readArchiveMetadata(int ad) {
+    metadata md;
+    while (read(ad, &md, sizeof (md)) > 0){
+        printf("filename: %s \tuid: %u \tgid: %u \tmode: %u \tsize: %lld \n", md.name,md.uid,md.gid,md.mode, md.size);
+        lseek(ad, md.size, SEEK_CUR);
+    }
 }
 
 int createArchive(char* archiveName){
@@ -84,14 +207,13 @@ int archive(names filenames, int ad) {
         metadata met = getInfo(filenames.array[i]);
         writeData(met, ad);
     }
+
     return 0;
 }
 
 int writeData(metadata m, int ad) {
-    write(ad, "name ", sizeof(char)*5);
-    write(ad, "mode ", sizeof(char)*5);
-    write(ad, "mod time ", sizeof(char )*9);
-    //write(ad, &m.name, sizeof(char)*strlen(m.name));
+
+    write(ad,&m, sizeof (m));
     copyFileContent(m.name, ad);
     return 0;
 }
@@ -107,9 +229,9 @@ metadata getInfo(char * filename) {
     md.modification_time = stat_s.st_mtimespec;
     md.uid = stat_s.st_uid;
     md.size = stat_s.st_size;
-    md.name = filename;
+    strcpy(md.name, filename);
     md.nameLen = strlen(filename);
-
+    printf("mod time: %ld", md.modification_time.tv_nsec);
     return md;
 
 }
@@ -171,4 +293,16 @@ void copyFileContent(char* filename, int ad ) {
     if (close(fd) == -1)
         perror("close input");
 
+}
+
+int lastIndexOf(char c, char* s) {
+    int i = 0;
+    int cont = 0;
+    while(*s != '\0') {
+        if (c == *s)
+            i=cont;
+        cont++;
+        s++;
+    }
+    return i;
 }
