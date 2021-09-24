@@ -39,6 +39,9 @@ metadata getArchivedFileMetadata(char* filename, int ad);
 void archiveIfNewer(char* filename, int ad);
 void extract(int, const char[]);
 int lastIndexOf(char c, char* s);
+int my_strlen(const char* s);
+int my_strcmp(const char * s1, const char* s2);
+char* my_strcpy(char* param_1, const char* param_2);
 
 
 
@@ -47,6 +50,42 @@ int main(int argc, char* argv []) {
     analizeArg(argc, argv);
     return 0;
 }
+
+char* my_strcpy(char* param_1, const char* param_2) {
+    param_1 = malloc(sizeof(char)* (my_strlen(param_2)+1));
+
+    for(int i = 0; i< my_strlen(param_2); i++) {
+        param_1[i] = param_2[i];
+    }
+    return param_1;
+}
+
+int my_strcmp(const char * s1, const char* s2) {
+    int flag = 0;
+    while(*s1!= '\0'|| *s2!= '\0'){
+        if(*s1==*s2){
+            s1++;
+            s2++;
+        }else if ((*s1== '\0' && *s2!= '\0') ||(*s1!= '\0' && *s2== '\0') || *s1 != *s2) {
+            flag = 1;
+            break;
+        }
+        else flag = 0;
+    }
+    return flag;
+
+}
+
+int my_strlen(const char* s) {
+    if(s==NULL) return -1;
+    int i = 0;
+    while(s[i]!= '\0')
+        i++;
+    return i;
+}
+
+
+
 
 
 int analizeArg( int argc, char* argv []) {
@@ -168,18 +207,18 @@ void extract(int ad, const char *dirname) {
 metadata getArchivedFileMetadata(char* filename, int ad){
     metadata md;
     while (read(ad, &md, sizeof (md)) > 0){
-        if (strcmp(filename, md.name) == 0)
+        if (my_strcmp(filename, md.name) == 0)
             return md;
         lseek(ad, md.size, SEEK_CUR);
     }
-    strcpy(md.name,"");
+    my_strcpy(md.name,"");
     return md;
 }
 
 void archiveIfNewer(char* filename, int ad) {
     metadata new_md = getInfo(filename);
     metadata a_md = getArchivedFileMetadata(filename, ad);
-    if(strcmp(a_md.name, "")==0 || new_md.modification_time.tv_nsec > a_md.modification_time.tv_nsec )
+    if(my_strcmp(a_md.name, "")==0 || new_md.modification_time.tv_nsec > a_md.modification_time.tv_nsec )
         writeData(new_md, ad);
 
 }
@@ -229,8 +268,8 @@ metadata getInfo(char * filename) {
     md.modification_time = stat_s.st_mtimespec;
     md.uid = stat_s.st_uid;
     md.size = stat_s.st_size;
-    strcpy(md.name, filename);
-    md.nameLen = strlen(filename);
+    my_strcpy(md.name, filename);
+    md.nameLen = my_strlen(filename);
     printf("mod time: %ld", md.modification_time.tv_nsec);
     return md;
 
@@ -238,7 +277,7 @@ metadata getInfo(char * filename) {
 
 int argContains(char * arg,int argc, char*argv[]) {
     for (int i = 0; i< argc; i++)
-        if(strcmp(arg, argv[i]) == 0)
+        if(my_strcmp(arg, argv[i]) == 0)
             return i;
     return -1;
 }
@@ -246,10 +285,10 @@ int argContains(char * arg,int argc, char*argv[]) {
 
 
 int isAFilename(char* str) {
-    if(strcmp(str, "-c")!=0 && strcmp(str, "-f")!=0 && strcmp(str, "-r")!=0 && strcmp(str, "-u")!=0){
-        unsigned long len = strlen(str);
+    if(my_strcmp(str, "-c")!=0 && my_strcmp(str, "-f")!=0 && my_strcmp(str, "-r")!=0 && my_strcmp(str, "-u")!=0){
+        unsigned long len = my_strlen(str);
         const char* ext = &str[len -3];
-        if(strcmp(ext, "tar") == 0) return 0;
+        if(my_strcmp(ext, "tar") == 0) return 0;
         else return 1;
     }
     return 0;
@@ -262,8 +301,8 @@ int isAFilename(char* str) {
     namesArray.array = malloc(sizeof(char *) * argc-3);
     for( int i = 1; i< argc; i++) {
         if(isAFilename(argv[i])){
-            namesArray.array[namesArray.count] = (char *) malloc(sizeof(char) * (strlen(argv[i]) + 1));
-            strcpy(namesArray.array[namesArray.count], argv[i]);
+            namesArray.array[namesArray.count] = (char *) malloc(sizeof(char) * (my_strlen(argv[i]) + 1));
+            my_strcpy(namesArray.array[namesArray.count], argv[i]);
             namesArray.count ++;
         }
     }
