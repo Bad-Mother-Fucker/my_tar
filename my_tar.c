@@ -38,7 +38,7 @@ void copyFileContent(char* , int );
 void readArchiveMetadata(int ad);
 metadata getArchivedFileMetadata(char* filename, int ad);
 void archiveIfNewer(char* filename, int ad);
-void extract(int, const char[]);
+void extract(int);
 int lastIndexOf(char c, char* s);
 int my_strlen(const char* s);
 int my_strcmp(const char * s1, const char* s2);
@@ -93,12 +93,8 @@ int my_strlen(const char* s) {
 int analizeArg( int argc, char* argv []) {
 
     if (argc < 3) {
-        argc = 4;
-        argv[1] = "-cf";
-        argv[2] = "../file.tar";
-        argv[3] = "../preova.txt";
-
-
+        perror("Too few arguments");
+        exit(1);
     };
 
     if (flagContains('c', argv) ) {
@@ -163,7 +159,7 @@ int analizeArg( int argc, char* argv []) {
                     perror("Error opening archive: ");
                     exit(1);
                 }
-                extract(ad, argv[3]);
+                extract(ad);
             }
 
 
@@ -176,7 +172,7 @@ int closeArchive(int ad){
 }
 
 
-void extract(int ad, const char *dirname) {
+void extract(int ad) {
 
     metadata md;
 
@@ -190,11 +186,11 @@ void extract(int ad, const char *dirname) {
             metadata stat = getInfo(md.name);
             if (stat.modification_time < md.modification_time){
                 unlink(stat.name);
-                fd = open(("%s/%s", dirname, filename), O_RDWR|O_CREAT);
+                fd = open(filename, O_RDWR|O_CREAT);
             }
 
         }else {
-            fd = open(("%s/%s", dirname, filename), O_RDWR|O_CREAT);
+            fd = open(filename, O_RDWR|O_CREAT);
         }
 
         char buf[md.size];
